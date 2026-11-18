@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C++ to CUDA Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one timeline strip on top, then one section per phase. Courses are plain checklists; each project is the only boxed element. */
+:root {
+  --bg: #F1F4F2;
+  --surface: #FFFFFF;
+  --fg: #13201B;
+  --muted: #55645E;
+  --line: #D3DCD7;
+  --course: #0B7A66;
+  --course-bg: #DDF0EA;
+  --proj: #2A47C9;
+  --proj-bg: #E1E6FA;
+  --gpu: #7035C4;
+  --gpu-bg: #EBE1F8;
+  --rest: #55645E;
+  --rest-bg: #E3E8E5;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1613; --surface: #162019; --fg: #E4EDE8; --muted: #97A8A0; --line: #2A3832;
+    --course: #4CC9AE; --course-bg: #12302A; --proj: #8EA2FF; --proj-bg: #1A2250;
+    --gpu: #B993F2; --gpu-bg: #2A1B48; --rest: #97A8A0; --rest-bg: #1E2A25;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1613; --surface: #162019; --fg: #E4EDE8; --muted: #97A8A0; --line: #2A3832;
+  --course: #4CC9AE; --course-bg: #12302A; --proj: #8EA2FF; --proj-bg: #1A2250;
+  --gpu: #B993F2; --gpu-bg: #2A1B48; --rest: #97A8A0; --rest-bg: #1E2A25;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 16px/1.55 var(--body);
+  padding-block: 36px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1000px; margin: 0 auto; }
+h1 { font: 700 clamp(2rem, 5.5vw, 3.1rem)/1.05 var(--display); letter-spacing: -0.02em; margin: 0 0 14px; max-width: 16ch; text-wrap: balance; }
+h2 { font: 700 1.65rem/1.15 var(--display); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+h3 { font-size: 1rem; margin: 0 0 6px; font-weight: 600; }
+p { margin: 0; }
+.lede { max-width: 64ch; color: var(--muted); margin-bottom: 22px; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--proj); outline-offset: 2px; }
+
+.overall { display: flex; align-items: center; gap: 14px; max-width: 440px; }
+.bar { flex: 1; height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.bar > span { display: block; height: 100%; width: 0; background: var(--course); transition: width .25s; }
+.overall p, .count { font-size: .875rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* timeline strip */
+.strip-scroll { overflow-x: auto; margin-top: 30px; padding-inline: 14px; }
+.strip { position: relative; min-width: 720px; height: 186px; }
+.tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); }
+.tick span { position: absolute; top: 0; left: 5px; font-size: .75rem; color: var(--muted); }
+.pbar { position: absolute; top: 24px; height: 38px; border-radius: 6px; display: flex; align-items: center; padding: 0 9px; font-size: .8125rem; font-weight: 600; overflow: hidden; white-space: nowrap; text-decoration: none; }
+.k-course { background: var(--course-bg); color: var(--course); }
+.k-proj { background: var(--proj-bg); color: var(--proj); }
+.k-gpu { background: var(--gpu-bg); color: var(--gpu); }
+.k-rest { background: var(--rest-bg); color: var(--rest); }
+.marker { position: absolute; top: 74px; width: 26px; height: 26px; margin-left: -13px; border-radius: 50%; background: var(--surface); border: 2px solid var(--proj); color: var(--proj); font: 600 .75rem/22px var(--body); text-align: center; text-decoration: none; }
+.band { position: absolute; height: 22px; border-radius: 4px; font-size: .75rem; line-height: 20px; padding: 0 7px; overflow: hidden; white-space: nowrap; }
+.band.finals { top: 116px; border: 1px solid var(--line); color: var(--muted); background: repeating-linear-gradient(135deg, var(--rest-bg) 0 6px, transparent 6px 12px); }
+.band.apps { top: 146px; background: var(--proj-bg); color: var(--proj); }
+.legend { font-size: .8125rem; color: var(--muted); margin-top: 8px; max-width: 70ch; }
+
+.sync { margin-top: 14px; max-width: 460px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; }
+.sync[hidden] { display: none; }
+.sync p { font-size: .9rem; }
+.sync textarea { width: 100%; font: .8125rem/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: vertical; }
+.sync .copy { justify-self: start; }
+/* rules */
+.rules { margin: 40px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 20px 32px; }
+.rules li { font-size: .9375rem; border-top: 1px solid var(--line); padding-top: 10px; min-width: 0; }
+.rules b { display: block; font-weight: 600; margin-bottom: 2px; }
+
+/* filter */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 44px; align-items: center; }
+.filters span { font-size: .875rem; color: var(--muted); margin-right: 4px; }
+.chip { font: 500 .875rem var(--body); border: 1px solid var(--line); background: var(--surface); color: var(--fg); padding: 6px 13px; border-radius: 99px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+/* phases */
+.phase { border-top: 2px solid var(--c); padding-top: 20px; margin-top: 44px; scroll-margin-top: 16px; }
+.phase[data-kind="course"] { --c: var(--course); }
+.phase[data-kind="rest"] { --c: var(--rest); }
+.phase[data-kind="proj"] { --c: var(--proj); }
+.phase[data-kind="gpu"] { --c: var(--gpu); }
+.phase-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+.phase-head .count { margin-left: auto; }
+.dates { color: var(--muted); font-size: .9rem; }
+.pace { color: var(--muted); font-size: .9rem; margin-top: 2px; }
+.goal { max-width: 66ch; margin: 14px 0 22px; }
+.lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 24px 40px; }
+.list { min-width: 0; }
+ul.checks { list-style: none; margin: 0; padding: 0; }
+.checks li { border-top: 1px solid var(--line); }
+label.item { display: flex; gap: 11px; padding: 9px 0; cursor: pointer; align-items: flex-start; }
+label.item input { accent-color: var(--course); width: 18px; height: 18px; flex: none; margin: 3px 0 0; cursor: pointer; }
+label.item .txt { min-width: 0; }
+label.item .n { display: block; font-size: .875rem; color: var(--muted); }
+label.item input:checked + .txt .t { color: var(--muted); text-decoration: line-through; }
+
+/* projects */
+.proj { margin-top: 26px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 22px; scroll-margin-top: 16px; }
+.proj-head { display: flex; gap: 6px 14px; align-items: center; flex-wrap: wrap; }
+.pnum { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--proj); color: var(--proj); font: 600 .8125rem/24px var(--body); text-align: center; flex: none; }
+.ptitle { font: 700 1.3rem/1.2 var(--display); margin: 0; }
+.due { color: var(--muted); font-size: .875rem; margin-left: auto; }
+.why { color: var(--muted); font-size: .9375rem; margin-top: 10px; max-width: 66ch; }
+.proj-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 18px 36px; margin-top: 16px; }
+.proj-body > div { min-width: 0; }
+.proj ul.plain { margin: 0; padding-left: 1.1em; }
+.proj ul.plain li { padding: 3px 0; }
+.proj label.item input { accent-color: var(--proj); }
+.resume { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 14px; }
+.resume-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.resume-top b { font-weight: 600; font-size: .9375rem; }
+.pill { font-size: .8125rem; padding: 2px 10px; border-radius: 99px; background: var(--rest-bg); color: var(--rest); font-variant-numeric: tabular-nums; }
+.resume.ready .pill { background: var(--course-bg); color: var(--course); }
+.resume-line { background: var(--bg); border-radius: 8px; padding: 10px 12px; font-size: .9375rem; color: var(--muted); max-width: 70ch; }
+.resume.ready .resume-line { color: var(--fg); }
+.copy { font: 500 .8125rem var(--body); border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; margin-left: auto; }
+.copy[disabled] { opacity: .45; cursor: not-allowed; }
+.noresume { font-size: .9375rem; color: var(--muted); }
+
+[data-filter="cpp"] .list:not([data-kind="cpp"]), [data-filter="dsa"] .list:not([data-kind="dsa"]),
+[data-filter="project"] .list:not([data-kind="project"]) { display: none; }
+[data-filter="cpp"] .proj, [data-filter="dsa"] .proj { display: none; }
+
+/* rhythm */
+.rhythm { margin-top: 56px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 24px 40px; }
+.rhythm ul { margin: 0; padding-left: 1.1em; }
+.rhythm li { padding: 3px 0; }
+@media (prefers-reduced-motion: reduce) { .bar > span { transition: none; } }
+</style>
+
+<main class="wrap">
+  <header>
+    <h1>Nine months from linked lists to CUDA</h1>
+    <p class="lede">Beginning C++ and the C++ DSA course, paced around school, with a project at each checkpoint. Small data structures first, then an LLVM compiler, then a CUDA matrix multiply. Nov 18, 2026 to Aug 18, 2027.</p>
+    <div class="overall">
+      <div class="bar" role="progressbar" aria-label="Overall progress" aria-valuemin="0" aria-valuemax="100" id="overallAria"><span id="overallBar"></span></div>
+      <p id="overallText"></p>
+    </div>
+    <p class="count" id="updated" style="margin-top:8px;white-space:normal"></p>
+    <div class="sync" id="sync" hidden>
+      <p>You changed boxes on this page. Copy the new file, paste it over <b>progress.json</b> in your repo, then commit and push.</p>
+      <textarea id="pjson" readonly rows="5" aria-label="New progress.json contents"></textarea>
+      <button class="copy" id="copyjson" type="button" style="margin-left:0">Copy progress.json</button>
+    </div>
+  </header>
+
+  <div class="strip-scroll"><div class="strip" id="strip"></div></div>
+  <p class="legend">Numbered circles are the eight projects and sit on their due dates. Hatched weeks are typical finals; check them against your York schedule and slide the dates if they differ.</p>
+
+  <ul class="rules">
+    <li><b>Start from an empty file</b>Keep the course code closed while you write each project.</li>
+    <li><b>Push to GitHub on day one</b>Commit every session. Your earlier projects were lost with the old computer.</li>
+    <li><b>Resume only after every check</b>A project goes on your resume when all its checks are ticked. Add numbers only from your own runs.</li>
+    <li><b>School comes first</b>In a heavy week, do one course session or skip the week. The dates slide; the order stays.</li>
+  </ul>
+
+  <div class="filters" role="group" aria-label="Show">
+    <span>Show</span>
+    <button class="chip" data-f="all" aria-pressed="true">Everything</button>
+    <button class="chip" data-f="cpp" aria-pressed="false">Beginning C++</button>
+    <button class="chip" data-f="dsa" aria-pressed="false">DSA course</button>
+    <button class="chip" data-f="project" aria-pressed="false">Projects</button>
+  </div>
+
+  <div id="phases" data-filter="all"></div>
+
+  <section class="rhythm" aria-label="Weekly rhythm">
+    <div>
+      <h3>A normal week, about 8 hours</h3>
+      <ul>
+        <li>Three course sessions of about an hour</li>
+        <li>Two LeetCode problems in C++, one of them a redo from last week</li>
+        <li>One project block of about 3 hours at the weekend</li>
+        <li>Friday: commit, push, and update the README line</li>
+      </ul>
+    </div>
+    <div>
+      <h3>A light week, about 4 hours</h3>
+      <ul>
+        <li>Two course sessions</li>
+        <li>One LeetCode problem</li>
+        <li>No project work, and no guilt</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var PHASES = [
+    { id: "p1", kind: "course", name: "Basics and linked lists", short: "Basics", start: "2026-11-18", end: "2026-12-31",
+      pace: "4 to 6 hours a week while finals run",
+      goal: "Pick both courses up where you stopped and get linked lists solid enough to write on paper. Keep the videos fast and spend the time typing code.",
+      lists: [
+        { kind: "cpp", title: "Beginning C++", items: [
+          { t: "Section 4 from lecture 27", n: "Skim at 1.5x." },
+          { t: "Sections 5 to 8", n: "Skim. Stop on anything where you can’t predict the output." },
+          { t: "Sections 9 to 11", n: "Skim. Write each function example yourself." },
+          { t: "Side task: header and .cpp split, include guards, a minimal CMakeLists.txt", n: "One evening. The course doesn’t cover it and every project needs it." }
+        ] },
+        { kind: "dsa", title: "C++ DSA course", items: [
+          "Section 7: linked list LeetCode exercises",
+          "Section 8: doubly linked lists",
+          "Stacks and queues",
+          { t: "Redo each exercise the next day from an empty file", n: "This is the fix for blanking on the linked list in your AMD interview." }
+        ] }
+      ], projects: [1] },
+
+    { id: "p2", kind: "course", name: "Pointers, classes and trees", short: "Classes and trees", start: "2027-01-01", end: "2027-02-15",
+      pace: "About 8 hours a week",
+      goal: "The core of C++. Project 2 is your first resume entry, so finish it before applications pick up in February.",
+      lists: [
+        { kind: "cpp", title: "Beginning C++", items: [
+          "Section 12: pointers and references (do all of it)",
+          "Section 13: classes",
+          "Section 14: operator overloading",
+          { t: "Side task: class and function templates", n: "learncpp.com has a clear chapter set. You need it to make Project 3 generic." }
+        ] },
+        { kind: "dsa", title: "C++ DSA course", items: [
+          "Trees and binary search trees",
+          "Tree traversal",
+          "Heaps",
+          { t: "Hash tables: reread your notes", n: "You’ve done the lectures. Project 3 is where you build one." }
+        ] }
+      ], projects: [2, 3] },
+
+    { id: "p3", kind: "course", name: "Polymorphism, graphs and a parser", short: "Graphs and parser", start: "2027-02-16", end: "2027-03-31",
+      pace: "About 8 hours a week, 4 in midterm weeks",
+      goal: "Finish the object-oriented half of the course, learn graphs and sorting, and build the front end of a compiler. Project 5 is the entry ticket to LLVM.",
+      lists: [
+        { kind: "cpp", title: "Beginning C++", items: [
+          "Section 15: inheritance (skip multiple inheritance)",
+          "Section 16: polymorphism",
+          "Section 17: smart pointers",
+          "Section 19: file I/O and string streams only",
+          { t: "Side task: std::optional and std::variant", n: "cppreference examples. Your AST can use them." }
+        ] },
+        { kind: "dsa", title: "C++ DSA course", items: [
+          "Graphs",
+          "Sorting: merge sort and quicksort",
+          "Recursion"
+        ] }
+      ], projects: [4, 5] },
+
+    { id: "p4", kind: "rest", name: "Finals month", short: "Finals month", start: "2027-04-01", end: "2027-04-30",
+      pace: "3 to 4 hours a week",
+      goal: "Exams come first. Keep both courses ticking over, build nothing new, and be ready to explain Projects 2 and 5 out loud if an interview comes in.",
+      lists: [
+        { kind: "cpp", title: "Beginning C++", items: [
+          "Section 20: the STL",
+          "Section 21: lambdas",
+          "Section 23: scoped enums"
+        ] },
+        { kind: "dsa", title: "C++ DSA course", items: [
+          "Dynamic programming",
+          "Redo any exercise you needed a hint for"
+        ] },
+        { kind: "project", title: "Instead of a project", items: [
+          "Three LeetCode problems a week in C++: one on lists, one on trees, one on graphs"
+        ] }
+      ], projects: [] },
+
+    { id: "p5", kind: "proj", name: "SIMD sprint and the LLVM compiler", short: "SIMD and LLVM", start: "2027-05-01", end: "2027-06-15",
+      pace: "8 to 10 hours a week",
+      goal: "Start with a one-week SIMD sprint, the topic you couldn’t answer at AMD. Then turn Project 5’s parser into a compiler that emits LLVM IR and write two optimization passes yourself.",
+      lists: [
+        { kind: "project", title: "Weekly milestones", items: [
+          "May 1 to 7: Project 6, the SIMD dot product",
+          "May 8 to 14: build LLVM in WSL, emit a function that returns 42 with IRBuilder, run it with lli",
+          "May 15 to 24: generate IR for your AST: arithmetic, variables, functions and calls",
+          "May 25 to Jun 2: if/else and while, with basic blocks and phi nodes",
+          "Jun 3 to 9: your own constant-folding pass and dead-code-elimination pass",
+          "Jun 10 to 15: compare against opt -O2, finish the tests, write the README with before and after IR"
+        ] },
+        { kind: "project", title: "Reading", items: [
+          { t: "LLVM tutorial: My First Language Frontend with LLVM", n: "Read a chapter, close the tab, then write your own version." },
+          "Explain SSA, basic blocks and phi nodes in two minutes, out loud",
+          "Compiler Explorer: read the assembly for three small C++ functions at -O0 and -O3"
+        ] }
+      ], projects: [6, 7] },
+
+    { id: "p6", kind: "gpu", name: "CUDA and the GPU project", short: "CUDA", start: "2027-06-16", end: "2027-08-18",
+      pace: "8 to 10 hours a week, or about 5 if you’re working full time",
+      goal: "Learn the GPU memory hierarchy by making one kernel faster step by step, then measure it against cuBLAS. Your RTX 4060 Ti runs all of it locally through WSL. If a summer job eats your hours, keep the benchmarks and cut register tiling first.",
+      lists: [
+        { kind: "project", title: "Weekly milestones", items: [
+          "Jun 16 to 30: CUDA toolkit in WSL, vector add, grids and blocks, cudaMemcpy, an error-check macro, timing with CUDA events",
+          "Jul 1 to 15: naive GEMM, checked against your Project 2 matrix multiply",
+          "Jul 16 to 31: shared-memory tiling, coalesced loads, shared-memory bank conflicts",
+          "Aug 1 to 12: register tiling, Nsight Compute profile, roofline sketch, comparison with cublasSgemm",
+          "Aug 13 to 18: README with your measured GFLOP/s table and what each step fixed"
+        ] },
+        { kind: "project", title: "Reading and stretch goals", items: [
+          "CUDA C++ Programming Guide (NVIDIA): the programming model and memory hierarchy chapters",
+          "Programming Massively Parallel Processors (Hwu and Kirk): the chapters on architecture, memory and tiled matrix multiply",
+          "Simon Boehm’s blog post on optimizing a CUDA matmul",
+          "Stretch: a reduction or softmax kernel",
+          { t: "Stretch: run hipify on your naive kernel and read the HIP output", n: "You can’t run it without an AMD GPU, but reading it shows how close the two APIs are." }
+        ] }
+      ], projects: [8] }
+  ];
+
+  var PROJECTS = {
+    1: { name: "Linked list kit", due: "2026-12-31", dueLabel: "Dec 31",
+      why: "The first thing an interviewer reaches for. Do it until it’s boring.",
+      build: [
+        "Singly and doubly linked list of int, in a header and a .cpp file",
+        "Push, pop, insert, remove, find, print",
+        "Reverse, find the middle node, detect a cycle",
+        "A stack and a queue built on top of your list",
+        "Asserts for every operation, a CMakeLists.txt, and a README with the Big O of each operation"
+      ],
+      gates: [
+        "Written from an empty file with the course code closed",
+        "Builds with -Wall -Wextra and no warnings",
+        "No errors or leaks under -fsanitize=address",
+        "You can reverse and print a list on paper in 10 minutes",
+        "Pushed to GitHub with a README"
+      ],
+      resume: null, note: "Practice project. Keep it on GitHub and off the resume." },
+
+    2: { name: "Matrix class", due: "2027-01-31", dueLabel: "Jan 31",
+      why: "Your first resume entry. It also becomes the CPU reference for the CUDA project.",
+      build: [
+        "Matrix stored as one flat row-major std::vector<double>",
+        "Constructors, copy and move, element access with (row, col)",
+        "Operators +, -, * and ==, plus transpose",
+        "Naive multiply, then a loop-reordered or blocked multiply",
+        "A timing harness with std::chrono, built in Release mode",
+        "README with a table of your own measured times"
+      ],
+      gates: [
+        "Written from an empty file after Section 14",
+        "Results match hand-computed 3x3 cases",
+        "The move constructor is tested and you can explain why it exists",
+        "Benchmarks ran in Release mode on your own machine",
+        "The README has your measured numbers, not numbers from elsewhere",
+        "Pushed to GitHub"
+      ],
+      resume: "Matrix class in C++20: dense row-major matrix with operator overloading, move semantics and a multiply optimized for cache locality, built with CMake and benchmarked against the naive version." },
+
+    3: { name: "BST and hash map", due: "2027-02-15", dueLabel: "Feb 15",
+      why: "Two structures you can be asked to build live, plus your first templates.",
+      build: [
+        "Binary search tree: insert, find, erase, in-order traversal, height",
+        "Hash map from int to string with chaining and a resize at a load factor you choose",
+        "Turn both into templates once the basics pass your tests",
+        "Tests for collisions and for erasing a node with two children"
+      ],
+      gates: [
+        "Written from an empty file",
+        "Erase works for a leaf, a node with one child and a node with two (tested)",
+        "The hash map resizes and keeps every key",
+        "No errors or leaks under -fsanitize=address",
+        "Pushed to GitHub"
+      ],
+      resume: null, note: "Practice project. Keep it on GitHub and off the resume." },
+
+    4: { name: "Graph toolkit", due: "2027-03-12", dueLabel: "Mar 12",
+      why: "Compilers order work with graphs, so topological sort comes back later.",
+      build: [
+        "Directed graph as adjacency lists, loaded from a text file",
+        "BFS and DFS",
+        "Topological sort with cycle detection",
+        "Dijkstra with std::priority_queue (read its reference page first)"
+      ],
+      gates: [
+        "Written from an empty file",
+        "Topological sort rejects a graph that has a cycle",
+        "Dijkstra matches hand-worked results on two small graphs",
+        "Pushed to GitHub with a README that shows the input format"
+      ],
+      resume: null, note: "Practice project. Keep it on GitHub and off the resume." },
+
+    5: { name: "Expression parser", due: "2027-03-31", dueLabel: "Mar 31",
+      why: "The front end of your compiler. If you can’t build this without a tutorial, wait before starting LLVM.",
+      build: [
+        "Write the grammar in EBNF before any code",
+        "Tokenizer that records line and column on every token",
+        "Recursive-descent parser: +, -, *, /, unary minus, parentheses",
+        "Variables and let bindings, then function definitions and calls",
+        "AST nodes owned by std::unique_ptr",
+        "A tree-walking evaluator and readable error messages",
+        "Tests for each grammar rule"
+      ],
+      gates: [
+        "The grammar was written down first",
+        "Written from an empty file, with no copied parser",
+        "Every error message names a line and column",
+        "You can explain why recursive descent handles precedence with one function per level",
+        "Pushed to GitHub"
+      ],
+      resume: null, note: "This becomes the front end of Project 7 and goes on your resume as part of it." },
+
+    6: { name: "SIMD dot product", due: "2027-05-07", dueLabel: "May 7",
+      why: "A one-week answer to the SIMD question from your AMD interview.",
+      build: [
+        "Check that your CPU supports AVX2 (lscpu in WSL)",
+        "Dot product of two float arrays as a scalar loop",
+        "The same with AVX2 intrinsics (the _mm256 functions)",
+        "Compile the scalar loop at -O3 and read what the compiler did on Compiler Explorer",
+        "Benchmark all three at several array sizes"
+      ],
+      gates: [
+        "Written from an empty file",
+        "All three versions give matching results",
+        "You can explain what a vector register is and why alignment matters",
+        "Benchmarks ran in Release mode on your own machine",
+        "Pushed to GitHub"
+      ],
+      resume: null, note: "Short sprint. If your numbers are good, add one line to the Matrix class entry." },
+
+    7: { name: "LLVM expression compiler", due: "2027-06-15", dueLabel: "Jun 15",
+      why: "The project that matches the job: a front end, an IR, and optimization passes you wrote.",
+      build: [
+        "Code generation from your Project 5 AST to LLVM IR with IRBuilder",
+        "Arithmetic, variables, functions and calls",
+        "if/else and while using basic blocks and phi nodes",
+        "Your own constant-folding pass",
+        "Your own dead-code-elimination pass",
+        "A script that compiles a source file, prints the IR before and after your passes, and runs the result",
+        "README with a before and after IR example and one diagram of the pipeline"
+      ],
+      gates: [
+        "Compiled programs print the same output as your Project 5 evaluator",
+        "Constant folding visibly shrinks the IR on an example in the README",
+        "Dead-code elimination removes an unused computation, shown in the README",
+        "You can explain SSA, basic blocks and phi in two minutes",
+        "The reference tutorial was closed while you wrote the code",
+        "Pushed to GitHub"
+      ],
+      resume: "Expression compiler in C++ targeting LLVM IR: hand-written lexer and recursive-descent parser, IRBuilder code generation, and custom constant-folding and dead-code-elimination passes." },
+
+    8: { name: "CUDA matrix multiply", due: "2027-08-18", dueLabel: "Aug 18",
+      why: "Shows you understand why GPU code is fast or slow, which is what kernel and compiler teams hire for.",
+      build: [
+        "Naive kernel, one thread per output element",
+        "Shared-memory tiled kernel",
+        "Coalesced global loads",
+        "Register-tiled kernel",
+        "Correctness check against your Project 2 multiply",
+        "Timing with CUDA events, reported as GFLOP/s for each version",
+        "Nsight Compute profile of the naive kernel and your best kernel",
+        "Comparison with cublasSgemm and a short roofline note"
+      ],
+      gates: [
+        "Every kernel matches the CPU result within a tolerance you state",
+        "The GFLOP/s table comes from your own runs on the RTX 4060 Ti",
+        "You can say what limits the naive kernel and what each step fixed",
+        "One Nsight Compute finding is explained in the README",
+        "Pushed to GitHub"
+      ],
+      resume: "CUDA matrix multiply: naive to shared-memory and register-tiled kernels, profiled with Nsight Compute and compared against cuBLAS. Add the measured fraction of cuBLAS only after your own run." }
+  };
+
+  var KEY = "cpp-cuda-plan-v1";
+  var state = {};
+  function currentJson() {
+    var d = new Date();
+    var iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    return JSON.stringify({ updated: iso, done: Object.keys(state).sort() }, null, 2) + "\n";
+  }
+  function save() {
+    document.getElementById("sync").hidden = false;
+    document.getElementById("pjson").value = currentJson();
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function item(id, it) {
+    var t = typeof it === "string" ? it : it.t;
+    var n = typeof it === "string" ? "" : it.n;
+    return '<li><label class="item"><input type="checkbox" data-id="' + id + '"' + (state[id] ? " checked" : "") + '><span class="txt"><span class="t">' + esc(t) + '</span>' + (n ? '<span class="n">' + esc(n) + '</span>' : "") + '</span></label></li>';
+  }
+
+  /* timeline */
+  var T0 = Date.UTC(2026, 10, 18), T1 = Date.UTC(2027, 7, 18), SPAN = T1 - T0, DAY = 86400000;
+  function ms(s) { var p = s.split("-").map(Number); return Date.UTC(p[0], p[1] - 1, p[2]); }
+  function pct(s) { return (ms(s) - T0) / SPAN * 100; }
+  function widthPct(a, b) { return (ms(b) + DAY - ms(a)) / SPAN * 100; }
+
+  var strip = document.getElementById("strip");
+  var sh = "";
+  var months = [["2026-12-01", "Dec"], ["2027-01-01", "Jan"], ["2027-02-01", "Feb"], ["2027-03-01", "Mar"], ["2027-04-01", "Apr"], ["2027-05-01", "May"], ["2027-06-01", "Jun"], ["2027-07-01", "Jul"], ["2027-08-01", "Aug"]];
+  sh += '<div class="tick" style="left:0"><span>Nov 18</span></div>';
+  months.forEach(function (m) { sh += '<div class="tick" style="left:' + pct(m[0]) + '%"><span>' + m[1] + '</span></div>'; });
+  PHASES.forEach(function (p) {
+    sh += '<a class="pbar k-' + p.kind + '" href="#' + p.id + '" style="left:' + pct(p.start) + '%;width:calc(' + widthPct(p.start, p.end) + '% - 3px)" title="' + esc(p.name) + '">' + esc(p.short) + '</a>';
+  });
+  Object.keys(PROJECTS).forEach(function (k) {
+    var pr = PROJECTS[k];
+    sh += '<a class="marker" href="#proj-' + k + '" style="left:' + pct(pr.due) + '%" title="Project ' + k + ': ' + esc(pr.name) + ', due ' + pr.dueLabel + '" aria-label="Project ' + k + ': ' + esc(pr.name) + '">' + k + '</a>';
+  });
+  sh += '<div class="band finals" style="left:' + pct("2026-12-01") + '%;width:' + widthPct("2026-12-01", "2026-12-22") + '%">Finals</div>';
+  sh += '<div class="band finals" style="left:' + pct("2027-04-01") + '%;width:' + widthPct("2027-04-01", "2027-04-30") + '%">Finals</div>';
+  sh += '<div class="band apps" style="left:' + pct("2027-02-01") + '%;width:' + widthPct("2027-02-01", "2027-05-31") + '%">Fall 2027 internship applications</div>';
+  strip.innerHTML = sh;
+
+  /* phases */
+  var out = "";
+  PHASES.forEach(function (p, pi) {
+    out += '<section class="phase" id="' + p.id + '" data-kind="' + p.kind + '">';
+    out += '<div class="phase-head"><h2>' + esc(p.name) + '</h2><span class="dates">' + fmt(p.start) + ' to ' + fmt(p.end) + '</span><span class="count" data-count="' + p.id + '"></span></div>';
+    out += '<p class="pace">' + esc(p.pace) + '</p><p class="goal">' + esc(p.goal) + '</p>';
+    out += '<div class="lists">';
+    p.lists.forEach(function (l, li) {
+      out += '<div class="list" data-kind="' + l.kind + '"><h3>' + esc(l.title) + '</h3><ul class="checks">';
+      l.items.forEach(function (it, ii) { out += item(p.id + "." + li + "." + ii, it); });
+      out += '</ul></div>';
+    });
+    out += '</div>';
+    p.projects.forEach(function (n) {
+      var pr = PROJECTS[n];
+      out += '<article class="proj" id="proj-' + n + '" data-proj="' + n + '">';
+      out += '<div class="proj-head"><span class="pnum">' + n + '</span><h3 class="ptitle">' + esc(pr.name) + '</h3><span class="due">Due ' + pr.dueLabel + '</span></div>';
+      out += '<p class="why">' + esc(pr.why) + '</p>';
+      out += '<div class="proj-body"><div><h3>What to build</h3><ul class="plain">';
+      pr.build.forEach(function (b) { out += '<li>' + esc(b) + '</li>'; });
+      out += '</ul></div><div><h3>Done when</h3><ul class="checks">';
+      pr.gates.forEach(function (g, gi) { out += item("g" + n + "." + gi, g); });
+      out += '</ul></div></div>';
+      if (pr.resume) {
+        out += '<div class="resume" data-resume="' + n + '"><div class="resume-top"><b>Resume line</b><span class="pill"></span><button class="copy" type="button" disabled>Copy</button></div><p class="resume-line">' + esc(pr.resume) + '</p></div>';
+      } else {
+        out += '<div class="resume"><p class="noresume">' + esc(pr.note) + '</p></div>';
+      }
+      out += '</article>';
+    });
+    out += '</section>';
+  });
+  document.getElementById("phases").innerHTML = out;
+
+  function fmt(s) {
+    var p = s.split("-").map(Number);
+    return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][p[1] - 1] + " " + p[2];
+  }
+
+  /* progress */
+  function refresh() {
+    var all = document.querySelectorAll('input[data-id]');
+    var done = 0;
+    all.forEach(function (c) { if (c.checked) done++; });
+    var pc = all.length ? Math.round(done / all.length * 100) : 0;
+    document.getElementById("overallBar").style.width = pc + "%";
+    document.getElementById("overallText").textContent = done + " of " + all.length + " done";
+    document.getElementById("overallAria").setAttribute("aria-valuenow", pc);
+    document.querySelectorAll(".phase").forEach(function (sec) {
+      var inputs = sec.querySelectorAll('input[data-id]'), d = 0;
+      inputs.forEach(function (c) { if (c.checked) d++; });
+      sec.querySelector("[data-count]").textContent = d + " of " + inputs.length;
+    });
+    document.querySelectorAll("[data-resume]").forEach(function (box) {
+      var card = box.closest(".proj");
+      var gates = card.querySelectorAll('input[data-id^="g"]'), d = 0;
+      gates.forEach(function (c) { if (c.checked) d++; });
+      var ready = d === gates.length;
+      box.classList.toggle("ready", ready);
+      box.querySelector(".pill").textContent = ready ? "Ready for your resume" : (gates.length - d) + " of " + gates.length + " checks left";
+      box.querySelector(".copy").disabled = !ready;
+    });
+  }
+  refresh();
+
+  fetch("progress.json?v=" + Date.now()).then(function (r) { return r.json(); }).then(function (d) {
+    state = {};
+    (d.done || []).forEach(function (id) { state[id] = 1; });
+    document.querySelectorAll("input[data-id]").forEach(function (c) { c.checked = !!state[c.getAttribute("data-id")]; });
+    refresh();
+    var u = document.getElementById("updated");
+    if (d.updated) u.textContent = "Last committed update: " + d.updated;
+  }).catch(function () {
+    document.getElementById("updated").textContent = "progress.json not found. Open this page from GitHub Pages or a local server, not by double-clicking the file.";
+  });
+
+  document.getElementById("copyjson").addEventListener("click", function () {
+    var ta = document.getElementById("pjson"), b = this;
+    function fb() { ta.select(); b.textContent = "Selected, press Ctrl+C"; }
+    try { navigator.clipboard.writeText(ta.value).then(function () { b.textContent = "Copied"; }, fb); } catch (e) { fb(); }
+    setTimeout(function () { b.textContent = "Copy progress.json"; }, 2500);
+  });
+
+  document.getElementById("phases").addEventListener("change", function (e) {
+    var id = e.target.getAttribute("data-id");
+    if (!id) return;
+    if (e.target.checked) state[id] = 1; else delete state[id];
+    save(); refresh();
+  });
+
+  document.getElementById("phases").addEventListener("click", function (e) {
+    var btn = e.target.closest(".copy");
+    if (!btn || btn.disabled) return;
+    var line = btn.closest(".resume").querySelector(".resume-line");
+    var text = line.textContent;
+    function fallback() {
+      var r = document.createRange(); r.selectNodeContents(line);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      btn.textContent = "Selected";
+    }
+    try {
+      navigator.clipboard.writeText(text).then(function () { btn.textContent = "Copied"; }, fallback);
+    } catch (err) { fallback(); }
+    setTimeout(function () { btn.textContent = "Copy"; }, 2000);
+  });
+
+  document.querySelectorAll(".chip").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll(".chip").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+      document.getElementById("phases").setAttribute("data-filter", b.getAttribute("data-f"));
+    });
+  });
+})();
+</script>
+
+</html>
